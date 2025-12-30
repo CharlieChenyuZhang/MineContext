@@ -66,6 +66,9 @@ const navigationSlice = createSlice({
           case '/':
             state.activeMainTab = 'home'
             break
+          case '/analysis':
+            state.activeMainTab = 'analysis'
+            break
           case '/screen-monitor':
             state.activeMainTab = 'screen-monitor'
             break

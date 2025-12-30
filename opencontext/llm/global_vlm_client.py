@@ -81,6 +81,23 @@ class GlobalVLMClient:
                 self._auto_initialized = True
                 return
 
+            # Check if config has required fields
+            if not isinstance(vlm_config, dict):
+                logger.warning("vlm_model config is not a dictionary")
+                self._auto_initialized = True
+                return
+
+            # Check for required fields (base_url, api_key, model)
+            required_fields = ["base_url", "api_key", "model"]
+            missing_fields = [field for field in required_fields if not vlm_config.get(field)]
+            if missing_fields:
+                logger.warning(
+                    f"vlm_model config is missing required fields: {', '.join(missing_fields)}. "
+                    "Please configure vlm_model in your config file with base_url, api_key, and model."
+                )
+                self._auto_initialized = True
+                return
+
             self._vlm_client = LLMClient(llm_type=LLMType.CHAT, config=vlm_config)
             logger.info("GlobalVLMClient auto-initialized successfully")
             self._auto_initialized = True
@@ -114,6 +131,10 @@ class GlobalVLMClient:
     def generate_with_messages(
         self, messages: list, enable_executor: bool = True, max_calls: int = 5, **kwargs
     ):
+        if self._vlm_client is None:
+            error_msg = "VLM client is not initialized. Please configure vlm_model in your config file."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         response = self._vlm_client.generate_with_messages(messages, **kwargs)
         call_count = 0
         while enable_executor:
@@ -176,6 +197,10 @@ class GlobalVLMClient:
     async def generate_with_messages_async(
         self, messages: list, enable_executor: bool = True, max_calls: int = 5, **kwargs
     ):
+        if self._vlm_client is None:
+            error_msg = "VLM client is not initialized. Please configure vlm_model in your config file."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         response = await self._vlm_client.generate_with_messages_async(messages, **kwargs)
         call_count = 0
         while enable_executor:
@@ -243,6 +268,10 @@ class GlobalVLMClient:
         Returns:
             Raw LLM response object, including possible tool_calls
         """
+        if self._vlm_client is None:
+            error_msg = "VLM client is not initialized. Please configure vlm_model in your config file."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         response = await self._vlm_client.generate_with_messages_async(
             messages, tools=tools, **kwargs
         )
@@ -252,6 +281,10 @@ class GlobalVLMClient:
         """
         Agent-specific streaming generation method
         """
+        if self._vlm_client is None:
+            error_msg = "VLM client is not initialized. Please configure vlm_model in your config file."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         async for chunk in self._vlm_client._openai_chat_completion_stream_async(
             messages, tools=tools, **kwargs
         ):

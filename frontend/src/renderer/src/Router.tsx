@@ -10,6 +10,7 @@ import HomePage from './pages/home/home-page'
 import VaultPage from './pages/vault/Vault'
 import ScreenMonitor from './pages/screen-monitor/screen-monitor'
 import Settings from './pages/settings/settings'
+import AnalysisPage from './pages/analysis/analysis-page'
 
 import Files from './pages/files/Files'
 import AIDemo from './pages/ai-demo/ai-demo'
@@ -67,6 +68,7 @@ const AppContent: FC = () => {
     return (
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/analysis" element={<AnalysisPage />} />
         <Route path="/vault" element={<VaultPage />} />
         <Route path="/screen-monitor" element={<ScreenMonitor />} />
         <Route path="/settings" element={<Settings />} />

@@ -3,6 +3,7 @@
 
 import { spawn } from 'child_process'
 import { app } from 'electron'
+import * as fs from 'fs'
 
 import * as path from 'path'
 import { getLogger } from '@shared/logger/main'
@@ -58,27 +59,75 @@ export interface FinalWindowInfo {
  */
 const getWindowsWithRealIds = (): Promise<QuartzWindowInfo[]> => {
   return new Promise((resolve, reject) => {
-    const basePath = app.isPackaged
-      ? path.join(process.resourcesPath, 'bin', 'window_inspector')
-      : path.join(__dirname, '../..', 'externals/python/window_inspector/dist', 'window_inspector')
+    let basePath: string
+    if (app.isPackaged) {
+      basePath = path.join(process.resourcesPath, 'bin', 'window_inspector')
+    } else {
+      // In development, use app.getAppPath() which points to the frontend directory
+      // or fall back to going up from __dirname (out/main/utils -> frontend)
+      const frontendRoot = app.getAppPath() || path.join(__dirname, '../..', '..')
+      basePath = path.join(frontendRoot, 'externals', 'python', 'window_inspector', 'dist', 'window_inspector')
+    }
     const exePath = path.join(basePath, 'window_inspector')
+
+    logger.debug(`Resolved window_inspector path: ${exePath}`)
+    logger.debug(`Base path: ${basePath}, exists: ${fs.existsSync(basePath)}`)
+
+    // Check if executable exists before trying to spawn
+    if (!fs.existsSync(exePath)) {
+      const errorMsg = `window_inspector executable not found at ${exePath}. Please run 'npm run build:externals' or 'node build-python.js' to build it.`
+      logger.warn(errorMsg)
+      reject(new Error(errorMsg))
+      return
+    }
+
+    logger.debug(`Spawning window_inspector from: ${exePath}`)
     const py = spawn(exePath)
 
     let output = ''
     let error = ''
 
-    py.stdout.on('data', (data) => (output += data.toString()))
-    py.stderr.on('data', (data) => (error += data.toString()))
+    py.stdout.on('data', (data) => {
+      const chunk = data.toString()
+      output += chunk
+      logger.debug(`window_inspector stdout chunk: ${chunk.substring(0, 100)}`)
+    })
+    py.stderr.on('data', (data) => {
+      const chunk = data.toString()
+      error += chunk
+      // Log stderr as debug since the Python script uses stderr for logging
+      logger.debug(`window_inspector stderr: ${chunk.substring(0, 200)}`)
+    })
+
+    py.on('error', (err) => {
+      logger.error('Failed to spawn window_inspector:', err)
+      reject(err)
+    })
 
     py.on('close', (code) => {
-      if (code === 0 && output) {
+      // Try to parse JSON even if exit code is non-zero, as the script might output valid JSON
+      if (output.trim()) {
         try {
-          resolve(JSON.parse(output))
+          const parsed = JSON.parse(output.trim())
+          // If we got valid JSON, resolve regardless of exit code
+          resolve(parsed)
+          return
         } catch (err) {
-          reject(err)
+          // JSON parsing failed
+          logger.error('Failed to parse window_inspector output as JSON:', err)
+          logger.error('Output:', output.substring(0, 500))
+          reject(new Error(`Failed to parse JSON output: ${err instanceof Error ? err.message : String(err)}`))
+          return
         }
+      }
+
+      // No output or empty output
+      if (code === 0) {
+        // Exit code 0 but no output - return empty array
+        resolve([])
       } else {
-        reject(new Error(error || 'Python script failed'))
+        // Non-zero exit code and no valid output
+        reject(new Error(error || `Python script failed with exit code ${code}`))
       }
     })
   })

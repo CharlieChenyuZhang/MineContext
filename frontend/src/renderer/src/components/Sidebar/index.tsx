@@ -9,6 +9,7 @@ import logo from '/src/assets/icons/logo.svg'
 import homeIcon from '/src/assets/icons/home.svg'
 import screenMonitorIcon from '/src/assets/icons/screen-monitor.svg'
 import settings from '/src/assets/icons/settings.svg'
+import { IconCode } from '@arco-design/web-react/icon'
 
 // import resourcesIcon from '/src/assets/icons/resources.svg'
 // import { IconRobot } from '@arco-design/web-react/icon'
@@ -22,6 +23,12 @@ const tabItems = [
     icon: <img src={homeIcon} alt="home" style={{ width: 15, height: 15 }} />,
     label: 'Home',
     path: '/'
+  },
+  {
+    key: 'analysis',
+    icon: <IconCode style={{ width: 15, height: 15 }} />,
+    label: 'Analysis',
+    path: '/analysis'
   },
   // {
   //   key: 'ai-demo',

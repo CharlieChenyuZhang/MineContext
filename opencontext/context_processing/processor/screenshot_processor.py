@@ -43,6 +43,32 @@ from opencontext.monitoring import (
 
 logger = get_logger(__name__)
 
+# Global log store for raw_resp logs (thread-safe with lock)
+_raw_resp_logs = []
+_raw_resp_logs_lock = threading.Lock()
+_max_logs = 100  # Keep last 100 logs
+
+
+def _add_raw_resp_log(raw_resp: Dict[str, Any], screenshot_path: str, timestamp: datetime.datetime):
+    """Add a raw_resp log entry to the global store."""
+    global _raw_resp_logs
+    with _raw_resp_logs_lock:
+        _raw_resp_logs.append({
+            "raw_resp": raw_resp,
+            "screenshot_path": screenshot_path,
+            "timestamp": timestamp.isoformat() if isinstance(timestamp, datetime.datetime) else timestamp,
+        })
+        # Keep only the last max_logs entries
+        if len(_raw_resp_logs) > _max_logs:
+            _raw_resp_logs = _raw_resp_logs[-_max_logs:]
+
+
+def get_raw_resp_logs(limit: int = 50) -> List[Dict[str, Any]]:
+    """Get recent raw_resp logs."""
+    global _raw_resp_logs
+    with _raw_resp_logs_lock:
+        return _raw_resp_logs[-limit:].copy()
+
 
 class ScreenshotProcessor(BaseContextProcessor):
     """
@@ -290,6 +316,15 @@ class ScreenshotProcessor(BaseContextProcessor):
             raise ValueError(f"Failed to get VLM response. Error: {e}")
 
         raw_resp = parse_json_from_response(raw_llm_response)
+        logger.info(f"!! -- VLM parse_json_from_response output (raw_resp): {raw_resp}")
+        
+        # Store raw_resp log for UI display
+        if raw_resp and raw_context.content_path:
+            try:
+                _add_raw_resp_log(raw_resp, raw_context.content_path, raw_context.create_time)
+            except Exception as e:
+                logger.warning(f"Failed to store raw_resp log: {e}")
+        
         if not raw_resp:
             logger.error(f"Empty VLM response.")
             raise ValueError(f"Empty VLM response.")

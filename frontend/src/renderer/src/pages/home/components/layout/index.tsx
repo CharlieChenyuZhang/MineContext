@@ -10,10 +10,11 @@ interface LatestActivityCardProps {
   children?: React.ReactNode
   seeAllClick?: () => void
   isEmpty?: boolean
+  height?: string
 }
 
 const CardLayout: FC<LatestActivityCardProps> = (props) => {
-  const { title, seeAllClick, emptyText, children, isEmpty } = props
+  const { title, seeAllClick, emptyText, children, isEmpty, height = 'h-[160px]' } = props
 
   return (
     <Card
@@ -31,7 +32,7 @@ const CardLayout: FC<LatestActivityCardProps> = (props) => {
           ) : null}
         </div>
       }
-      className="flex w-full h-[160px] p-3 flex-col items-start gap-3 self-stretch rounded-[10px] border border-[rgba(225,227,239,0.80)] bg-white">
+      className={`flex w-full ${height} p-3 flex-col items-start gap-3 self-stretch rounded-[10px] border border-[rgba(225,227,239,0.80)] bg-white`}>
       <div
         className={`flex flex-col items-center gap-1 flex-1 self-stretch ${isEmpty ? '' : 'justify-start items-start'} h-full`}>
         {!isEmpty ? (
