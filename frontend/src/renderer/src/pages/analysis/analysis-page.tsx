@@ -4,7 +4,7 @@
 import React from 'react'
 import { Typography } from '@arco-design/web-react'
 import './analysis-page.css'
-import { RawRespLogsCard } from '../home/components/raw-resp-logs-card'
+import { ScreenshotAnalysisLogsCard } from '../home/components/screenshot-analysis-logs-card'
 
 const { Title, Text } = Typography
 
@@ -29,7 +29,7 @@ const AnalysisPage: React.FC = () => {
             </div>
             <div className="flex items-start gap-3 flex-1 self-stretch">
               <div className="flex flex-col items-start gap-3 flex-1 self-stretch">
-                <RawRespLogsCard />
+                <ScreenshotAnalysisLogsCard />
               </div>
             </div>
           </div>
@@ -40,3 +40,4 @@ const AnalysisPage: React.FC = () => {
 }
 
 export default AnalysisPage
+

@@ -35,6 +35,11 @@ from opencontext.utils.image import calculate_phash, resize_image
 from opencontext.utils.json_parser import parse_json_from_response
 from opencontext.utils.logging_utils import get_logger
 from opencontext.config.global_config import get_prompt_group
+from opencontext.context_processing.processor.screenshot_metrics import (
+    calculate_all_metrics,
+    extract_text_from_vlm_response,
+    calculate_all_metrics_extended
+)
 from opencontext.monitoring import (
     increment_data_count,
     increment_recording_stat,
@@ -49,7 +54,7 @@ _raw_resp_logs_lock = threading.Lock()
 _max_logs = 100  # Keep last 100 logs
 
 
-def _add_raw_resp_log(raw_resp: Dict[str, Any], screenshot_path: str, timestamp: datetime.datetime):
+def _add_raw_resp_log(raw_resp: Dict[str, Any], screenshot_path: str, timestamp: datetime.datetime, metrics: Optional[Dict[str, Any]] = None):
     """Add a raw_resp log entry to the global store."""
     global _raw_resp_logs
     with _raw_resp_logs_lock:
@@ -57,6 +62,7 @@ def _add_raw_resp_log(raw_resp: Dict[str, Any], screenshot_path: str, timestamp:
             "raw_resp": raw_resp,
             "screenshot_path": screenshot_path,
             "timestamp": timestamp.isoformat() if isinstance(timestamp, datetime.datetime) else timestamp,
+            "metrics": metrics or {},
         })
         # Keep only the last max_logs entries
         if len(_raw_resp_logs) > _max_logs:
@@ -108,6 +114,11 @@ class ScreenshotProcessor(BaseContextProcessor):
             {}
         )
         self._current_screenshot = deque(maxlen=self._batch_size * 2)
+        
+        # Store previous screenshot path and data for metrics calculation
+        self._previous_screenshot_path: Optional[str] = None
+        self._previous_raw_resp: Optional[Dict[str, Any]] = None
+        self._previous_embedding: Optional[Any] = None
 
     def shutdown(self, graceful: bool = False):
         """Gracefully shut down background processing tasks."""
@@ -318,10 +329,50 @@ class ScreenshotProcessor(BaseContextProcessor):
         raw_resp = parse_json_from_response(raw_llm_response)
         logger.info(f"!! -- VLM parse_json_from_response output (raw_resp): {raw_resp}")
         
-        # Store raw_resp log for UI display
+        # Extract text and compute embedding for semantic metrics
+        current_embedding = None
+        if raw_resp:
+            try:
+                current_text = extract_text_from_vlm_response(raw_resp)
+                if current_text:
+                    # Compute embedding for semantic metrics
+                    from opencontext.models.context import Vectorize
+                    vectorize_obj = Vectorize(text=current_text)
+                    current_embedding = await do_vectorize_async(vectorize_obj)
+                    if current_embedding and hasattr(current_embedding, 'vector'):
+                        current_embedding = current_embedding.vector
+            except Exception as e:
+                logger.warning(f"Failed to compute embedding for metrics: {e}")
+        
+        # Calculate metrics for this screenshot (extended version with text and semantic metrics)
+        metrics = None
+        if raw_context.content_path:
+            try:
+                metrics = calculate_all_metrics_extended(
+                    current_image_path=raw_context.content_path,
+                    previous_image_path=self._previous_screenshot_path,
+                    raw_resp=raw_resp,
+                    previous_raw_resp=self._previous_raw_resp,
+                    current_embedding=current_embedding,
+                    previous_embedding=self._previous_embedding,
+                    target_size=(320, 180),  # Downsample for faster processing
+                    blur_sigma=0.5,
+                    vcr_threshold=0.05,
+                    ed_percentile=85.0,
+                    se_bins=64,
+                    delta_time=2.0  # 2 seconds between screenshots
+                )
+                # Update previous data for next calculation
+                self._previous_screenshot_path = raw_context.content_path
+                self._previous_raw_resp = raw_resp
+                self._previous_embedding = current_embedding
+            except Exception as e:
+                logger.warning(f"Failed to calculate metrics: {e}")
+        
+        # Store raw_resp log with metrics for UI display
         if raw_resp and raw_context.content_path:
             try:
-                _add_raw_resp_log(raw_resp, raw_context.content_path, raw_context.create_time)
+                _add_raw_resp_log(raw_resp, raw_context.content_path, raw_context.create_time, metrics)
             except Exception as e:
                 logger.warning(f"Failed to store raw_resp log: {e}")
         
