@@ -53,6 +53,12 @@ const MetricItem: FC<MetricItemProps> = ({ label, value, interpretation }) => {
   )
 }
 
+interface UserProfile {
+  age?: string
+  gender?: string
+  socioeconomic_status?: string
+}
+
 interface ScreenshotAnalysisLog {
   raw_resp: any
   screenshot_path: string
@@ -131,6 +137,59 @@ const ScreenshotAnalysisLogsCard: FC = () => {
     return summaries.join(' ')
   }
 
+  const extractUserProfile = (raw_resp: any): UserProfile | null => {
+    if (!raw_resp || !raw_resp.items || !Array.isArray(raw_resp.items)) {
+      return null
+    }
+
+    // Get user_profile from the first item (assuming all items have the same user profile)
+    const firstItem = raw_resp.items[0]
+    if (firstItem && typeof firstItem === 'object') {
+      const userProfile = firstItem.data?.user_profile || firstItem.user_profile
+      if (userProfile && typeof userProfile === 'object') {
+        return {
+          age: userProfile.age || '未知',
+          gender: userProfile.gender || '未知',
+          socioeconomic_status: userProfile.socioeconomic_status || '未知'
+        }
+      }
+    }
+
+    return null
+  }
+
+  const extractAICollaboration = (raw_resp: any): string | null => {
+    if (!raw_resp || !raw_resp.items || !Array.isArray(raw_resp.items)) {
+      return null
+    }
+
+    const firstItem = raw_resp.items[0]
+    if (firstItem && typeof firstItem === 'object') {
+      const aiCollab = firstItem.data?.ai_collaboration || firstItem.ai_collaboration
+      if (aiCollab === 'yes' || aiCollab === 'no') {
+        return aiCollab
+      }
+    }
+
+    return null
+  }
+
+  const extractInteractionType = (raw_resp: any): string | null => {
+    if (!raw_resp || !raw_resp.items || !Array.isArray(raw_resp.items)) {
+      return null
+    }
+
+    const firstItem = raw_resp.items[0]
+    if (firstItem && typeof firstItem === 'object') {
+      const interactionType = firstItem.data?.interaction_type || firstItem.interaction_type
+      if (interactionType && typeof interactionType === 'string') {
+        return interactionType
+      }
+    }
+
+    return null
+  }
+
   useMount(() => {
     fetchLogs()
     // Poll every 3 seconds for new logs
@@ -200,6 +259,71 @@ const ScreenshotAnalysisLogsCard: FC = () => {
                 </div>
                 {isExpanded && (
                   <div className="mt-2 space-y-3">
+                    {/* User Profile & AI Collaboration Info */}
+                    {(() => {
+                      const userProfile = extractUserProfile(log.raw_resp)
+                      const aiCollaboration = extractAICollaboration(log.raw_resp)
+                      const interactionType = extractInteractionType(log.raw_resp)
+                      
+                      if (userProfile || aiCollaboration || interactionType) {
+                        return (
+                          <div className="p-3 bg-gradient-to-r from-purple-50 to-blue-50 rounded border border-purple-200">
+                            <Text className="text-xs font-semibold text-purple-900 mb-3 block">Analysis Overview</Text>
+                            
+                            {/* User Profile */}
+                            {userProfile && (
+                              <div className="mb-3 p-2 bg-white rounded border border-purple-100">
+                                <Text className="text-[10px] font-semibold text-purple-800 mb-2 block">User Profile</Text>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div>
+                                    <Text className="text-[10px] text-gray-600">Age:</Text>
+                                    <Text className="text-xs font-medium text-gray-800 ml-1">{userProfile.age}</Text>
+                                  </div>
+                                  <div>
+                                    <Text className="text-[10px] text-gray-600">Gender:</Text>
+                                    <Text className="text-xs font-medium text-gray-800 ml-1">{userProfile.gender}</Text>
+                                  </div>
+                                  <div>
+                                    <Text className="text-[10px] text-gray-600">SES:</Text>
+                                    <Text className="text-xs font-medium text-gray-800 ml-1">{userProfile.socioeconomic_status}</Text>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* AI Collaboration */}
+                            {aiCollaboration && (
+                              <div className="mb-3 p-2 bg-white rounded border border-purple-100">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <Text className="text-[10px] font-semibold text-purple-800 mb-1 block">AI Collaboration</Text>
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-xs font-semibold px-2 py-1 rounded ${
+                                        aiCollaboration === 'yes' 
+                                          ? 'bg-green-100 text-green-700' 
+                                          : 'bg-gray-100 text-gray-700'
+                                      }`}>
+                                        {aiCollaboration === 'yes' ? 'Yes' : 'No'}
+                                      </span>
+                                      {aiCollaboration === 'yes' && interactionType && (
+                                        <div className="flex items-center gap-1">
+                                          <Text className="text-[10px] text-gray-600">Type:</Text>
+                                          <span className="text-xs font-medium text-blue-700 bg-blue-50 px-2 py-1 rounded">
+                                            {interactionType}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
+                    
                     {/* Metrics Display */}
                     {log.metrics && Object.keys(log.metrics).length > 0 && (
                       <div className="p-2 bg-blue-50 rounded border border-blue-200">
@@ -255,7 +379,7 @@ const ScreenshotAnalysisLogsCard: FC = () => {
                           {log.metrics.td !== null && log.metrics.td !== undefined && (
                             <MetricItem
                               label="Text Density (TD)"
-                              value={log.metrics.td > 0 ? log.metrics.td.toExponential(2) : '0.00'}
+                              value={log.metrics.td > 0 ? log.metrics.td.toFixed(3) : '0.000'}
                               interpretation={interpretTD(log.metrics.td)}
                             />
                           )}

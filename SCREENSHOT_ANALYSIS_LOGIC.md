@@ -15,12 +15,14 @@ Screenshot Capture → Deduplication → Batch Processing → VLM Analysis → C
 ## 1. Screenshot Capture (`opencontext/context_capture/screenshot.py`)
 
 ### Key Components:
+
 - **Library**: Uses `mss` library for cross-platform screenshot capture
 - **Format**: PNG (default) or JPEG
 - **Multi-monitor**: Supports capturing from multiple monitors
 - **Storage**: Optionally saves screenshots to disk
 
 ### Process:
+
 1. Captures screenshots at configured intervals
 2. Converts to PIL Image format
 3. Saves to disk (if enabled)
@@ -29,35 +31,39 @@ Screenshot Capture → Deduplication → Batch Processing → VLM Analysis → C
 ## 2. Deduplication (`opencontext/context_processing/processor/screenshot_processor.py`)
 
 ### Perceptual Hashing:
+
 - Uses **difference hash (dhash)** algorithm via `imagehash` library
 - Hash size: 8x8 (64-bit hash)
 - Location: `opencontext/utils/image.py::calculate_phash()`
 
 ### Deduplication Logic:
+
 ```python
 def _is_duplicate(self, new_context: RawContextProperties) -> bool:
     # 1. Calculate perceptual hash of new screenshot
     new_phash = calculate_phash(new_context.content_path)
-    
+
     # 2. Compare with recent screenshots in cache
     for item in self._current_screenshot:
         # Calculate Hamming distance (bit differences)
         diff = bin(int(new_phash, 16) ^ int(item["phash"], 16)).count("1")
-        
+
         # If difference <= threshold, it's a duplicate
         if diff <= self._similarity_hash_threshold:  # Default: 2
             return True  # Duplicate found
-    
+
     # 3. New screenshot - add to cache
     self._current_screenshot.append({"phash": new_phash, "id": new_context.object_id})
     return False
 ```
 
 ### Configuration:
+
 - `similarity_hash_threshold`: Maximum Hamming distance for duplicates (default: 2)
 - `_current_screenshot`: LRU cache of recent screenshots (max: `batch_size * 2`)
 
 ### Image Optimization:
+
 - Optional image resizing before processing
 - `max_image_size`: Maximum dimension (default: 0 = no resize)
 - `resize_quality`: JPEG quality (default: 95)
@@ -65,6 +71,7 @@ def _is_duplicate(self, new_context: RawContextProperties) -> bool:
 ## 3. Batch Processing (`ScreenshotProcessor.batch_process()`)
 
 ### Queue-Based Processing:
+
 - Screenshots are queued in `_input_queue` (max size: `batch_size * 3`)
 - Background thread processes batches asynchronously
 - Batch triggers:
@@ -72,6 +79,7 @@ def _is_duplicate(self, new_context: RawContextProperties) -> bool:
   - After `batch_timeout` seconds (default: 20s)
 
 ### Processing Loop:
+
 ```python
 def _run_processing_loop(self):
     unprocessed_contexts = []
@@ -79,7 +87,7 @@ def _run_processing_loop(self):
         # Collect screenshots from queue
         raw_context = self._input_queue.get(timeout=self._batch_timeout)
         unprocessed_contexts.append(raw_context)
-        
+
         # Trigger batch processing when:
         # - Batch size reached OR
         # - Timeout exceeded
@@ -92,6 +100,7 @@ def _run_processing_loop(self):
 ## 4. VLM Analysis (`_process_vlm_single()`)
 
 ### Vision Language Model Integration:
+
 - Uses `GlobalVLMClient` to call VLM API
 - Location: `opencontext/llm/global_vlm_client.py`
 - Supports tool calling for enhanced context
@@ -99,6 +108,7 @@ def _run_processing_loop(self):
 ### Analysis Process:
 
 #### Step 1: Image Encoding
+
 ```python
 # Convert image to base64
 base64_image = self._encode_image_to_base64(image_path)
@@ -114,6 +124,7 @@ content = [
 ```
 
 #### Step 2: Prompt Construction
+
 - **System Prompt**: From `config/prompts_en.yaml::processing.extraction.screenshot_analyze.system`
 - **User Prompt**: Includes current timestamp, timezone, and context type descriptions
 - **Key Instructions**:
@@ -124,6 +135,7 @@ content = [
   - Multi-type context extraction
 
 #### Step 3: VLM Response
+
 ```python
 messages = [
     {"role": "system", "content": system_prompt},
@@ -135,7 +147,9 @@ response_data = parse_json_from_response(raw_llm_response)
 ```
 
 #### Step 4: Context Extraction
+
 The VLM returns JSON with multiple context items:
+
 ```json
 {
   "items": [
@@ -155,21 +169,25 @@ The VLM returns JSON with multiple context items:
 ### Context Types:
 
 1. **activity_context** (Default):
+
    - User's current activities and behaviors
    - Style: "current_user viewing...", "current_user configuring..."
    - Example: "current_user viewing project management board"
 
 2. **semantic_context**:
+
    - Knowledge content (documents, technical specs, architecture)
    - Style: "Technical architecture adopts...", "Core principle is..."
    - Example: "MineContext Technical Architecture"
 
 3. **state_context**:
+
    - Current status, progress, metrics
    - Style: "Project progress shows...", "System status is..."
    - Example: "Project Progress: Frontend development 80% complete"
 
 4. **procedural_context**:
+
    - Reusable operation processes
    - Style: "Step 1:...; Step 2:...; Step 3:..."
    - Example: "Steps for merging code using Git"
@@ -180,6 +198,7 @@ The VLM returns JSON with multiple context items:
    - Example: "Next week product release preparation items"
 
 ### Concurrent Processing:
+
 ```python
 # Process all screenshots in parallel
 vlm_results = await asyncio.gather(
@@ -191,6 +210,7 @@ vlm_results = await asyncio.gather(
 ## 5. Context Merging (`_merge_contexts()`)
 
 ### Merge Strategy:
+
 - Groups extracted contexts by `context_type`
 - Merges similar contexts using LLM
 - Preserves all details (no summarization)
@@ -198,6 +218,7 @@ vlm_results = await asyncio.gather(
 ### Merge Process:
 
 #### Step 1: Group by Type
+
 ```python
 items_by_type = {}
 for item in processed_items:
@@ -206,6 +227,7 @@ for item in processed_items:
 ```
 
 #### Step 2: LLM-Based Merging
+
 - Uses prompt: `merging.screenshot_batch_merging`
 - Determines which items should be merged based on semantic similarity
 - Merge criteria vary by context type:
@@ -216,6 +238,7 @@ for item in processed_items:
   - **intent_context**: Same goal/project plans
 
 #### Step 3: Merge Decision
+
 ```json
 {
   "items": [
@@ -237,11 +260,13 @@ for item in processed_items:
 ```
 
 #### Step 4: Entity Extraction
+
 - Parallel entity refresh for all merged/new contexts
 - Validates and cleans entities
 - Extracts: people, projects, products, documents, organizations, locations
 
 ### Merge Rules:
+
 - **Merged**: Multiple items → one combined context
   - Combines all raw properties
   - Merges create_time (earliest), event_time (latest)
@@ -253,11 +278,13 @@ for item in processed_items:
 ## 6. Vectorization & Storage
 
 ### Vectorization:
+
 - Creates embeddings from `title + summary`
 - Uses global embedding client
 - Format: `ContentFormat.TEXT`
 
 ### Storage:
+
 - Stores `ProcessedContext` objects in unified storage
 - Batch upsert for efficiency
 - Deletes old contexts when merged
@@ -269,15 +296,16 @@ for item in processed_items:
 ```yaml
 processing:
   screenshot_processor:
-    similarity_hash_threshold: 2      # Hamming distance for duplicates
-    batch_size: 10                    # Screenshots per batch
-    batch_timeout: 20                 # Seconds before timeout
-    max_image_size: 0                 # Max dimension (0 = no resize)
-    resize_quality: 95                # JPEG quality
-    enabled_delete: false             # Delete duplicate files
+    similarity_hash_threshold: 2 # Hamming distance for duplicates
+    batch_size: 10 # Screenshots per batch
+    batch_timeout: 20 # Seconds before timeout
+    max_image_size: 0 # Max dimension (0 = no resize)
+    resize_quality: 95 # JPEG quality
+    enabled_delete: false # Delete duplicate files
 ```
 
 ### VLM Configuration:
+
 ```yaml
 vlm_model:
   base_url: "https://..."
@@ -328,4 +356,3 @@ vlm_model:
 4. **Image resizing**: Reduces VLM processing time
 5. **Queue-based**: Non-blocking screenshot capture
 6. **LRU cache**: Efficient duplicate detection
-

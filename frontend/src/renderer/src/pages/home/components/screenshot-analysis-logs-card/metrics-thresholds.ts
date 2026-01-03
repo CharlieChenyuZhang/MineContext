@@ -182,23 +182,23 @@ export function interpretTC(tc: number): MetricInterpretation {
 
 /**
  * Get interpretation for Text Density (TD)
- * TD measures tokens per pixel (normalized text load)
- * Range: very small numbers (e.g., 0.00001 - 0.001)
+ * TD measures tokens per 1000 pixels (normalized text load)
+ * Range: typically 0.01 - 10 (tokens per 1000 pixels)
  */
 export function interpretTD(td: number): MetricInterpretation {
-  if (td < 0.0001) {
+  if (td < 0.1) {
     return {
       level: 'low',
       message: 'Low text density',
       description: 'Text is sparse relative to screen size. Screen might have large images or whitespace.'
     }
-  } else if (td < 0.0005) {
+  } else if (td < 0.5) {
     return {
       level: 'medium',
       message: 'Moderate text density',
       description: 'Text density is moderate. Typical for balanced layouts with text and other content.'
     }
-  } else if (td < 0.002) {
+  } else if (td < 2.0) {
     return {
       level: 'high',
       message: 'High text density',

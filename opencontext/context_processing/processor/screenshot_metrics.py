@@ -272,18 +272,23 @@ def extract_text_from_vlm_response(raw_resp: Dict[str, Any]) -> str:
     # Extract text from items
     items = raw_resp.get("items", [])
     for item in items:
-        # Try different possible text fields
+        # Try different possible text fields, including title
         if isinstance(item, dict):
+            # Collect all text fields: title, text, content, description, summary
+            title = item.get("title", "")
             text = item.get("text") or item.get("content") or item.get("description") or item.get("summary", "")
-            if text:
-                text_parts.append(str(text))
+            # Combine title and other text fields
+            combined_text = " ".join(filter(None, [title, text]))
+            if combined_text:
+                text_parts.append(combined_text)
     
     return " ".join(text_parts)
 
 
 def tokenize_text(text: str) -> List[str]:
     """
-    Simple tokenization - split by whitespace and punctuation.
+    Tokenization - split by whitespace and punctuation.
+    Improved to capture more tokens including those with special characters.
     
     Args:
         text: Input text string
@@ -294,9 +299,30 @@ def tokenize_text(text: str) -> List[str]:
     if not text:
         return []
     
-    # Simple tokenization: split by whitespace and punctuation
-    tokens = re.findall(r'\b\w+\b', text.lower())
-    return tokens
+    # Improved tokenization: 
+    # 1. Split by whitespace first
+    # 2. Then extract word tokens (including those with hyphens, underscores, etc.)
+    # 3. Also capture standalone numbers and alphanumeric sequences
+    text_lower = text.lower()
+    
+    # Find word tokens (words with letters, numbers, hyphens, underscores)
+    word_tokens = re.findall(r'\b[\w-]+\b', text_lower)
+    
+    # Also capture standalone numbers and sequences that might be separated by punctuation
+    # This helps catch tokens like "C++", "v2.0", etc.
+    additional_tokens = re.findall(r'[a-z0-9]+(?:\.[a-z0-9]+)*', text_lower)
+    
+    # Combine and deduplicate while preserving order
+    all_tokens = word_tokens + additional_tokens
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_tokens = []
+    for token in all_tokens:
+        if token not in seen and len(token) > 0:
+            seen.add(token)
+            unique_tokens.append(token)
+    
+    return unique_tokens
 
 
 def calculate_ot(text: str) -> int:
@@ -320,19 +346,22 @@ def calculate_td(text: str, pixel_count: int) -> float:
     Calculate Text Density (TD).
     
     Normalized measure of text load, more comparable across different resolutions and zoom levels.
+    Uses tokens per 1000 pixels for more reasonable scale (instead of per-pixel which gives very small numbers).
     
     Args:
         text: Extracted text string
         pixel_count: Total number of pixels in the image
     
     Returns:
-        Text density (tokens per pixel)
+        Text density (tokens per 1000 pixels)
     """
     if pixel_count == 0:
         return 0.0
     
     token_count = calculate_ot(text)
-    return token_count / pixel_count
+    # Normalize to tokens per 1000 pixels for more reasonable scale
+    # This gives values in a more interpretable range (e.g., 0.1-10 instead of 0.0001-0.01)
+    return (token_count * 1000.0) / pixel_count
 
 
 def calculate_tcr(current_text: str, previous_text: str) -> Optional[float]:
